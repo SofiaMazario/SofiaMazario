@@ -1,0 +1,131 @@
+# Cargar librerías necesarias
+library(readxl)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(text)
+library(emojifont)
+library(stringi)
+library(tidyr)
+library(devtools)
+library(readr)
+library(emo)
+
+# Cargamos los datos desde la URL
+url <- "https://raw.githubusercontent.com/himakaryv/smokpro-tobacco-product-classification/main/gold_corpus.csv"
+datos <- read_csv(url)
+
+# Visualizamos los datos
+View(datos)
+
+# Modificamos el dataframe, seleccionamos columnas específicas, limpiamos datos, renombramos y reubicamos columna
+datos <- datos %>%
+  select(-c(...3, ...4, ...5, ...6, ...7)) %>%
+  mutate(tweet_limpio = str_replace_all(tweet, "\\$RESERVED\\$", "")) %>%
+  mutate(tweet_limpio = str_replace_all(tweet_limpio, "\\$MENTION\\$", "")) %>%
+  rename(tweet_original = tweet, tweet = tweet_limpio) %>%
+  relocate(tweet, .after = tweet_original)
+
+# Visualizamos el dataframe modificado
+View(datos)
+
+
+##FRECUENCIA LONGITUD DE LOS TWEETS
+#creamos una nueva columna que llamaremos LongitudTweet que contiene la longitud de cada publicación
+datos <- datos %>%
+  mutate(LongitudTweet = nchar(tweet))
+
+View(datos)
+
+#creamos un histograma que muestra la distribución de las longitudes de los tweets:
+ggplot(datos, aes(x = LongitudTweet)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "black") +
+  labs(title = "Distribución de la Longitud de los Tweets",
+       x = "Longitud del Tweet (número de caracteres)",
+       y = "Número de Tweets") +
+  theme_minimal()
+
+##FRECUENCIA DE HASHTAGS
+
+# Extracción de todos los hashtags
+all_hashtags <- unlist(str_extract_all(datos$tweet, "#\\w+"))
+
+# Conteo de la frecuencia de cada hashtag
+hashtags_frecuencia <- table(all_hashtags) %>% as.data.frame()
+
+# Renombramos las columnas para mayor claridad
+colnames(hashtags_frecuencia) <- c("Hashtag", "Frecuencia")
+
+# Ordenamos por frecuencia de manera descendente
+hashtags_frecuencia <- hashtags_frecuencia %>% 
+  arrange(desc(Frecuencia))
+
+# Seleccionamos los 20 hashtags más frecuentes
+top_20_hashtags <- head(hashtags_frecuencia, 20)
+
+
+#Lo ploteamos
+ggplot(top_20_hashtags, aes(x = reorder(Hashtag, Frecuencia), y = Frecuencia)) + 
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +  # Hace que el gráfico sea horizontal para una mejor visualización de los hashtags
+  labs(title = "Top 20 hashtags más frecuentes", y = "Frecuencia", x = "") +
+  scale_y_continuous(breaks = seq(0, max(top_20_hashtags$Frecuencia), by = 1)) +  # ajusta las marcas del eje y
+  theme_minimal()
+
+View(top_20_hashtags)
+
+##EMOJIS 
+# Extraemos y analizamos los emojis en los tweets limpios y filtrados
+emojis<- datos %>%
+  mutate(emoji = ji_extract_all(tweet)) %>%
+  unnest(cols = c(emoji)) %>%
+  count(emoji, sort = TRUE) %>%
+  top_n(20, wt = n) # Selecciona los 20 emojis más usados
+
+# Visualizamos los emojis más usados
+ggplot(emojis, aes(x = reorder(emoji, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Top 20 emojis más usados", x = "Emoji", y = "Frecuencia")
+
+View(emojis)
+
+##PRE-PROCESADO
+library(dplyr)
+library(stringi)
+library(tm)
+`
+
+#Generamos las distintas stopwords en inglés
+stopw <- stopwords("en")
+
+#Función de limpieza 
+clean <- function(x){
+  if (!(is.na(x))){
+    x <- gsub("http[s]?://\\S+", "", x) # Remove URLs
+    x <- gsub("@\\w+", "", x)           # Remove mentions
+    x <- gsub("#\\w+", "", x)           # Remove hashtags
+    x <- gsub("\\d+\\w*\\d*", "", x)    # Remove numbers and words with embedded numbers
+    x <- gsub("[[:punct:]]", " ", x)    # Remove punctuation
+    x <- tolower(x)                     # Convert to lowercase
+    x <- iconv(x, "UTF-8", "ASCII//TRANSLIT") # Transliterate characters to the ASCII set
+    x <- removeNumbers(x)               # Remove numbers
+    x <- removeWords(x, stopw)          # Remove stopwords
+    x <- gsub('\\b\\w{1,2}\\b', '', x)  # Remove words of length 1 or 2
+    x <- gsub("\\s+", " ", x)           # Replace multiple spaces with single space
+    x <- str_trim(x)                    # Trim whitespace from beginning and end of text
+  }
+  return(x)
+}
+
+# Aplicamos la función de limpieza al texto de los tweets
+datos$tweet <- sapply(datos$tweet, clean)
+
+# Filtrar las filas donde el texto limpio es un string vacío o NA
+datos<- datos[!(is.na(datos$tweet) | datos$tweet == ""), ]
+
+View(datos)
+
+##GUARDAMOS CSV
+
+write.csv(datos, "C:/Users/Sofia/Documents/Sofía/TFG ANALYTICS/tweets_limpios1.csv", row.names = FALSE)
